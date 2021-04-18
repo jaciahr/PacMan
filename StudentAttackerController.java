@@ -11,80 +11,87 @@ public final class StudentAttackerController implements AttackerController
 	public void shutdown(Game game) { }
 
 	public int update(Game game, long timeDue) {
-		int action = Game.Direction.EMPTY;
+		int action;
 
-		//Gather all needed information
+		//INFORMATION
 
-		//hero information
-		Attacker hero =  game.getAttacker();
-		Node heroLocation = hero.getLocation();
+		//Attacker information
+		Attacker attacker =  game.getAttacker();
+		Node attLocation = attacker.getLocation();
 
-		//pill information
+        //Defenders information
+        List<Defender> defenderList = game.getDefenders();
+        Actor closestActor = attacker.getTargetActor(defenderList, true);
+        Defender closestDefender = (Defender) closestActor;
+        Node defLocation = closestDefender.getLocation();
+        int defDistance = attLocation.getPathDistance(defLocation);
+
+		//Pill information (normal and power)
 		List<Node> pList = game.getPillList();
 		List<Node> ppList = game.getPowerPillList();
-		Node closestPill = hero.getTargetNode(pList, true);
+		Node nearestPill = attacker.getTargetNode(pList, true);
 
 
+		//1. If there is an invulnerable defender nearby, pursue the closest power pill if possible and safe to do so
+		if ((defDistance < 5) && (!(closestDefender.isVulnerable()))){
+			int defDirection = attacker.getNextDir(defLocation, true);
 
-		//defender information
-		List<Defender> defenderList = game.getDefenders();
-		Actor closestActor = hero.getTargetActor(defenderList, true);
-		Defender closestEnemy = (Defender) closestActor;
-		Node enemyLocation = closestEnemy.getLocation();
-		int enemyGap = heroLocation.getPathDistance(enemyLocation);
-
-
-		//1. if enemy is super close and not vulnerable, avoid him while pursuing pills
-		if ((enemyGap < 5) && (!(closestEnemy.isVulnerable()))){
-			int edirection = hero.getNextDir(enemyLocation, true);
-			//2. if power pills available, pursue power pills while avoiding enemy
+			//a. If power pills are available, pursue the power pills while avoiding defenders
 			if (ppList.size() != 0) {
-				Node closestPP = hero.getTargetNode(ppList, true);
-				int ppdirection = hero.getNextDir(closestPP, true);
-				int ppGap = heroLocation.getPathDistance(closestPP);
-				//3. if hero is waiting at a power pill, take it
-				if ((ppdirection == edirection) && (ppGap == 1)){
-					action = hero.getNextDir(closestPP, true);
+				Node closestPP = attacker.getTargetNode(ppList, true);
+				int ppDirection = attacker.getNextDir(closestPP, true);
+				int ppGap = attLocation.getPathDistance(closestPP);
+
+				//i. If our attacker was waiting at a power pill, eat it
+				if ((ppDirection == defDirection) && (ppGap == 1)){
+					action = attacker.getNextDir(closestPP, true);
 				}
-				//3. else if enemy is standing in the way of power pill, avoid him
-				else if (ppdirection == edirection){
-					action = hero.getNextDir(enemyLocation, false);
+
+				//ii. Otherwise, if a defender is blocking the way to a power pill, avoid them
+				else if (ppDirection == defDirection){
+					action = attacker.getNextDir(defLocation, false);
 				}
-				//3. else if path to power pill is clear, take the power pill
+
+				//iii. Finally, if the path to a power pill is clear, eat the power pill
 				else {
-					action = hero.getNextDir(closestPP, true);
+					action = attacker.getNextDir(closestPP, true);
 				}
 			}
-			//2. if no power pills, pursue regular pills while avoiding enemy
+
+			//b. If there are no power pills (available), pursue normal pills while avoiding defenders
 			else {
-				int pdirection = hero.getNextDir(closestPill, true);
-				//3. if enemy is in the way of pill, avoid enemy
-				if (pdirection == edirection){
-					action = hero.getNextDir(enemyLocation, false);
+				int pDirection = attacker.getNextDir(nearestPill, true);
+
+				//i. If a defender is blocking the way to a normal pill, avoid them
+				if (pDirection == defDirection){
+					action = attacker.getNextDir(defLocation, false);
 				}
-				//3, if path to the pill is clear, take pill
+
+				//ii. Otherwise, if the path to a normal pill is clear, eat the pill
 				else {
-					action = hero.getNextDir(closestPill, true);
-				}
-			}
-		}
-		//1. else if enemy is somewhat nearby and is vulnerable, hunt him down
-		else if ((enemyGap < 90) && (closestEnemy.isVulnerable())){
-			action = hero.getNextDir(enemyLocation, true);
-		}
-		//1. if enemy far away, hunt pills and pause at power-pills
-		else {
-			action = hero.getNextDir(closestPill, true);
-			//2. If hero runs into power-pill, wait for ambush attack
-			if (ppList.size() != 0){
-				Node closestPP = hero.getTargetNode(ppList, true);
-				int ppGap = heroLocation.getPathDistance(closestPP);
-				if (ppGap <= 1){
-					action = hero.getReverse();
+					action = attacker.getNextDir(nearestPill, true);
 				}
 			}
 		}
 
+		//2. Otherwise, if there is a defender relatively close by and they're vulnerable, hunt them down
+		else if ((defDistance < 95) && (closestDefender.isVulnerable())){
+			action = attacker.getNextDir(defLocation, true);
+		}
+
+		//3. Finally, if the defenders are too far away, eat normal pills and wait at power pills
+		else {
+			action = attacker.getNextDir(nearestPill, true);
+
+			//a. If our attacker finds a power pill, wait beside it until there are defenders nearby to hunt
+			if (ppList.size() != 0){
+				Node closestPP = attacker.getTargetNode(ppList, true);
+				int ppGap = attLocation.getPathDistance(closestPP);
+				if (ppGap <= 1){
+					action = attacker.getReverse();
+				}
+			}
+		}
 		return action;
 	}
 }
